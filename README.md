@@ -18,15 +18,15 @@ On each claim cycle, the backend:
 3. Transfers the bought tokens to the configured dead wallet.
 4. Stores a local JSON log with transaction signatures and amounts.
 
-The project is backend-only. It exposes JSON endpoints that a dashboard, script, or monitoring tool can read.
+The project exposes JSON endpoints that a dashboard, script, or monitoring tool can read.
 
 ## Project Layout
 
 ```text
-backend/src/server.js        Express API, scheduler, and claim loop
-backend/src/pumpfunClaim.js  PumpDev claim and buyback transaction flow
-backend/src/solanaBurn.js    Solana wallet, token account, and burn transfer helpers
-backend/src/logStore.js      Local JSON log store
+src/server.js        Express API, scheduler, and claim loop
+src/pumpfunClaim.js  PumpDev claim and buyback transaction flow
+src/solanaBurn.js    Solana wallet, token account, and burn transfer helpers
+src/logStore.js      Local JSON log store
 ```
 
 ## Requirements
@@ -44,10 +44,10 @@ Install dependencies from the repository root:
 npm install
 ```
 
-Create your backend environment file:
+Create your environment file:
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
 Start in simulation mode:
@@ -124,7 +124,7 @@ Runs one manual claim cycle. In `simulate` mode this records a fake event. In `l
 
 ## Data
 
-Logs are stored at `backend/data/logs.json`. The file is created automatically and is ignored by Git so local runtime history is not committed.
+Logs are stored at `data/logs.json`. The file is created automatically and is ignored by Git so local runtime history is not committed.
 
 ## Safety Checklist Before Live Mode
 
