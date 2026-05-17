@@ -23,10 +23,10 @@ The project exposes JSON endpoints that a dashboard, script, or monitoring tool 
 ## Project Layout
 
 ```text
-src/server.js        Express API, scheduler, and claim loop
-src/pumpfunClaim.js  PumpDev claim and buyback transaction flow
-src/solanaBurn.js    Solana wallet, token account, and burn transfer helpers
-src/logStore.js      Local JSON log store
+src/server.ts        Express API, scheduler, and claim loop
+src/pumpfunClaim.ts  PumpDev claim and buyback transaction flow
+src/solanaBurn.ts    Solana wallet, token account, and burn transfer helpers
+src/logStore.ts      Local JSON log store
 ```
 
 ## Requirements
@@ -57,6 +57,13 @@ npm run dev
 ```
 
 The API listens on `http://localhost:8795` by default.
+
+Build and run the compiled backend:
+
+```bash
+npm run build
+npm start
+```
 
 ## Environment
 

@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { appendLog, getStats, readLogs } from './logStore.js';
+import type { BurnLog, DragonMode } from './logStore.js';
 import { claimPumpfunFees } from './pumpfunClaim.js';
 import { getConnection, getKeypair, sendToDeadWallet } from './solanaBurn.js';
 
@@ -12,10 +14,14 @@ const claimIntervalMinutes = Number(process.env.CLAIM_INTERVAL_MINUTES ?? 5);
 const claimIntervalMs = Math.max(1, claimIntervalMinutes) * 60_000;
 const autoClaimEnabled = process.env.AUTO_CLAIM_ENABLED !== 'false';
 let claimInProgress = false;
-let lastAutoClaimAt = null;
-let nextAutoClaimAt = autoClaimEnabled
+let lastAutoClaimAt: string | null = null;
+let nextAutoClaimAt: string | null = autoClaimEnabled
   ? new Date(Date.now() + claimIntervalMs).toISOString()
   : null;
+
+function getMode(): DragonMode {
+  return process.env.DRAGON_MODE === 'live' ? 'live' : 'simulate';
+}
 
 app.use(
   cors({
@@ -24,10 +30,10 @@ app.use(
 );
 app.use(express.json());
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     ok: true,
-    mode: process.env.DRAGON_MODE === 'live' ? 'live' : 'simulate',
+    mode: getMode(),
     autoClaimEnabled,
     claimIntervalMinutes,
     lastAutoClaimAt,
@@ -35,7 +41,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.get('/api/logs', async (_req, res, next) => {
+app.get('/api/logs', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await readLogs());
   } catch (error) {
@@ -43,7 +49,7 @@ app.get('/api/logs', async (_req, res, next) => {
   }
 });
 
-app.get('/api/stats', async (_req, res, next) => {
+app.get('/api/stats', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     res.json({
       ...(await getStats()),
@@ -57,11 +63,11 @@ app.get('/api/stats', async (_req, res, next) => {
   }
 });
 
-async function claimAndBurn(source = 'auto') {
+async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
   if (claimInProgress) {
     return appendLog({
       status: 'skipped',
-      mode: process.env.DRAGON_MODE === 'live' ? 'live' : 'simulate',
+      mode: getMode(),
       source: 'pump.fun fees',
       trigger: source,
       error: 'Previous claim cycle is still running.'
@@ -70,11 +76,11 @@ async function claimAndBurn(source = 'auto') {
 
   claimInProgress = true;
   try {
-    const live = process.env.DRAGON_MODE === 'live';
-    const connection = live ? getConnection() : null;
-    const keypair = live ? getKeypair() : null;
+    const live = getMode() === 'live';
+    const connection = live ? getConnection() : undefined;
+    const keypair = live ? getKeypair() : undefined;
     const claim = await claimPumpfunFees({ connection, keypair });
-    const burn = live
+    const burn = live && connection && keypair
       ? await sendToDeadWallet({ ...claim, connection, keypair })
       : {
           signature: 'simulated-dead-wallet-transfer',
@@ -102,7 +108,7 @@ async function claimAndBurn(source = 'auto') {
   } catch (error) {
     return await appendLog({
       status: 'failed',
-      mode: process.env.DRAGON_MODE === 'live' ? 'live' : 'simulate',
+      mode: getMode(),
       source: 'pump.fun fees',
       trigger: source,
       error: error instanceof Error ? error.message : String(error)
@@ -113,12 +119,12 @@ async function claimAndBurn(source = 'auto') {
   }
 }
 
-app.post('/api/claim-and-burn', async (_req, res) => {
+app.post('/api/claim-and-burn', async (_req: Request, res: Response) => {
   const entry = await claimAndBurn('manual-api');
   res.status(entry.status === 'failed' ? 500 : 201).json(entry);
 });
 
-app.use((error, _req, res, _next) => {
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({
     status: 'failed',
     error: error instanceof Error ? error.message : String(error)

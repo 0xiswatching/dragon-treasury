@@ -1,4 +1,5 @@
 import { LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
+import type { Connection, Keypair } from '@solana/web3.js';
 import {
   getTokenAccountBalance,
   getTokenProgramId,
@@ -7,7 +8,41 @@ import {
 
 const PUMPDEV_API_URL = process.env.PUMPDEV_API_URL ?? 'https://pumpdev.io';
 
-async function postPumpDev(path, body) {
+type PumpfunFlowInput = {
+  connection?: Connection | null;
+  keypair?: Keypair | null;
+};
+
+type LivePumpfunFlowInput = {
+  connection: Connection;
+  keypair: Keypair;
+};
+
+export type PumpfunClaimResult = {
+  mode: 'simulate' | 'live';
+  mint: string;
+  amountRaw: string;
+  lamports?: string;
+  decimals: number;
+  lamportsClaimed: string;
+  lamportsSpent: string;
+  claimSignature: string;
+  buySignature: string | null;
+};
+
+type ClaimCreatorFeesResult = {
+  signature: string;
+  lamportsClaimed: number;
+};
+
+type BuyBackResult = {
+  mint: string;
+  amountRaw: string;
+  buySignature: string | null;
+  lamportsSpent: string;
+};
+
+async function postPumpDev(path: string, body: Record<string, unknown>): Promise<Uint8Array> {
   const response = await fetch(`${PUMPDEV_API_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -22,14 +57,21 @@ async function postPumpDev(path, body) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-async function signAndSendTransaction({ connection, keypair, bytes }) {
+async function signAndSendTransaction({
+  connection,
+  keypair,
+  bytes
+}: LivePumpfunFlowInput & { bytes: Uint8Array }): Promise<string> {
   const tx = VersionedTransaction.deserialize(bytes);
   tx.sign([keypair]);
   return await connection.sendTransaction(tx, { skipPreflight: false });
 }
 
-async function claimCreatorFees({ connection, keypair }) {
-  const body = {
+async function claimCreatorFees({
+  connection,
+  keypair
+}: LivePumpfunFlowInput): Promise<ClaimCreatorFeesResult> {
+  const body: Record<string, unknown> = {
     publicKey: keypair.publicKey.toBase58(),
     priorityFee: Number(process.env.PUMPDEV_CLAIM_PRIORITY_FEE ?? 0.0001)
   };
@@ -50,7 +92,11 @@ async function claimCreatorFees({ connection, keypair }) {
   };
 }
 
-async function buyBackDrgn({ connection, keypair, lamportsClaimed }) {
+async function buyBackDrgn({
+  connection,
+  keypair,
+  lamportsClaimed
+}: LivePumpfunFlowInput & { lamportsClaimed: number }): Promise<BuyBackResult> {
   const mint = process.env.DRGN_MINT;
   if (!mint) {
     throw new Error('DRGN_MINT is required for live buybacks.');
@@ -97,7 +143,10 @@ async function buyBackDrgn({ connection, keypair, lamportsClaimed }) {
   };
 }
 
-export async function claimPumpfunFees({ connection, keypair } = {}) {
+export async function claimPumpfunFees({
+  connection,
+  keypair
+}: PumpfunFlowInput = {}): Promise<PumpfunClaimResult> {
   if (process.env.DRAGON_MODE !== 'live') {
     return {
       mode: 'simulate',

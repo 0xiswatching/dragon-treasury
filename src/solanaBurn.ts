@@ -18,28 +18,62 @@ import bs58 from 'bs58';
 
 const DEFAULT_DEAD_WALLET = '1nc1nerator11111111111111111111111111111111';
 
-export function getKeypair() {
+type SolanaAddress = string | PublicKey;
+
+type TokenAccountInput = {
+  owner: PublicKey;
+  mint: SolanaAddress;
+  tokenProgramId?: PublicKey;
+};
+
+type TokenProgramInput = {
+  connection: Connection;
+  mint: SolanaAddress;
+};
+
+type TokenBalanceInput = {
+  connection: Connection;
+  tokenAccount: PublicKey;
+};
+
+export type DeadWalletTransferInput = {
+  mint?: string;
+  amountRaw?: string | number | bigint;
+  lamports?: string | number;
+  connection?: Connection;
+  keypair?: Keypair;
+};
+
+export type DeadWalletTransferResult = {
+  signature: string;
+  mint?: string;
+  amountRaw?: string;
+  lamports?: string;
+  displayAmount?: string;
+};
+
+export function getKeypair(): Keypair {
   const secret = process.env.SOLANA_SECRET_KEY;
   if (!secret) {
     throw new Error('SOLANA_SECRET_KEY is required for live burns.');
   }
 
   if (secret.trim().startsWith('[')) {
-    const parsed = JSON.parse(secret);
+    const parsed = JSON.parse(secret) as number[];
     return Keypair.fromSecretKey(Uint8Array.from(parsed));
   }
 
   return Keypair.fromSecretKey(bs58.decode(secret));
 }
 
-export function getConnection() {
+export function getConnection(): Connection {
   return new Connection(
     process.env.SOLANA_RPC_URL ?? 'https://api.mainnet-beta.solana.com',
     'confirmed'
   );
 }
 
-export async function getTokenProgramId({ connection, mint }) {
+export async function getTokenProgramId({ connection, mint }: TokenProgramInput): Promise<PublicKey> {
   const mintKey = new PublicKey(mint);
   const mintAccount = await connection.getAccountInfo(mintKey, 'confirmed');
   if (!mintAccount) {
@@ -57,7 +91,11 @@ export async function getTokenProgramId({ connection, mint }) {
   throw new Error(`Unsupported token program for mint ${mint}: ${mintAccount.owner.toBase58()}`);
 }
 
-export function getWalletTokenAccount({ owner, mint, tokenProgramId = TOKEN_2022_PROGRAM_ID }) {
+export function getWalletTokenAccount({
+  owner,
+  mint,
+  tokenProgramId = TOKEN_2022_PROGRAM_ID
+}: TokenAccountInput): PublicKey {
   return getAssociatedTokenAddressSync(
     new PublicKey(mint),
     owner,
@@ -66,7 +104,10 @@ export function getWalletTokenAccount({ owner, mint, tokenProgramId = TOKEN_2022
   );
 }
 
-export async function getTokenAccountBalance({ connection, tokenAccount }) {
+export async function getTokenAccountBalance({
+  connection,
+  tokenAccount
+}: TokenBalanceInput): Promise<bigint> {
   try {
     const balance = await connection.getTokenAccountBalance(tokenAccount, 'confirmed');
     return BigInt(balance.value.amount);
@@ -75,7 +116,13 @@ export async function getTokenAccountBalance({ connection, tokenAccount }) {
   }
 }
 
-export async function sendToDeadWallet({ mint, amountRaw, lamports, connection, keypair }) {
+export async function sendToDeadWallet({
+  mint,
+  amountRaw,
+  lamports,
+  connection,
+  keypair
+}: DeadWalletTransferInput): Promise<DeadWalletTransferResult> {
   const activeConnection = connection ?? getConnection();
   const payer = keypair ?? getKeypair();
   const deadWallet = new PublicKey(process.env.DEAD_WALLET ?? DEFAULT_DEAD_WALLET);
