@@ -119,11 +119,6 @@ async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
   }
 }
 
-app.post('/api/claim-and-burn', async (_req: Request, res: Response) => {
-  const entry = await claimAndBurn('manual-api');
-  res.status(entry.status === 'failed' ? 500 : 201).json(entry);
-});
-
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({
     status: 'failed',

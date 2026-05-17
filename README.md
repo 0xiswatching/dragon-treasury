@@ -125,13 +125,7 @@ GET /api/logs
 
 Returns stored claim and dead-wallet transfer events.
 
-```http
-POST /api/claim-and-burn
-```
-
-Runs one manual claim cycle. In `simulate` mode this records a fake event. In `live` mode it signs and submits real transactions.
-
-Despite the route name, the live flow sends tokens to the configured dead wallet; it does not invoke an SPL token burn instruction.
+Claim cycles are run only by the backend scheduler. There is no public API route for manually triggering a claim or dead-wallet transfer.
 
 ## Data
 
@@ -139,7 +133,7 @@ Logs are stored at `data/logs.json`. The file is created automatically and is ig
 
 ## Safety Checklist Before Live Mode
 
-- Test `/api/claim-and-burn` in `simulate` mode first.
+- Test the scheduler in `simulate` mode first, using `RUN_CLAIM_ON_START=true` if you want one startup cycle.
 - Use a dedicated wallet with only the funds needed for this service.
 - Confirm `DRGN_MINT`, `DEAD_WALLET`, and `SOLANA_RPC_URL`.
 - Start with a conservative `BUYBACK_BPS`, reserve, and interval.
