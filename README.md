@@ -1,10 +1,12 @@
 # Dragon Treasury System
 
-Dragon Treasury is a small Node.js backend for running a Pump.fun creator-fee buyback and burn flow on Solana.
+Dragon Treasury is a small Node.js backend for running a Pump.fun creator-fee buyback and dead-wallet transfer flow on Solana.
+
+This project does not perform an on-chain SPL token burn instruction. After buying the configured token, it transfers those tokens to the configured dead wallet so the movement is public and verifiable on-chain.
 
 The service can run in two modes:
 
-- `simulate`: uses fake claim, buyback, and burn values so you can test the API and logs without spending funds.
+- `simulate`: uses fake claim, buyback, and dead-wallet transfer values so you can test the API and logs without spending funds.
 - `live`: claims Pump.fun/PumpDev creator fees, buys the configured token, and sends the bought tokens to a dead wallet.
 
 Use live mode carefully. It signs transactions with the configured wallet and can move real SOL and tokens.
@@ -25,7 +27,7 @@ The project exposes JSON endpoints that a dashboard, script, or monitoring tool 
 ```text
 src/server.ts        Express API, scheduler, and claim loop
 src/pumpfunClaim.ts  PumpDev claim and buyback transaction flow
-src/solanaBurn.ts    Solana wallet, token account, and burn transfer helpers
+src/solanaBurn.ts    Solana wallet, token account, and dead-wallet transfer helpers
 src/logStore.ts      Local JSON log store
 ```
 
@@ -85,9 +87,9 @@ Live-mode settings:
 | --- | --- |
 | `SOLANA_SECRET_KEY` | Wallet secret key as a base58 string or JSON array. Required in live mode. |
 | `SOLANA_RPC_URL` | RPC endpoint. Defaults to Solana mainnet public RPC. |
-| `DRGN_MINT` | Token mint to buy back and burn. Required for live buybacks. |
+| `DRGN_MINT` | Token mint to buy back and send to the dead wallet. Required for live buybacks. |
 | `DRGN_DECIMALS` | Token decimals used for log metadata. |
-| `DEAD_WALLET` | Burn destination. Defaults to `1nc1nerator11111111111111111111111111111111`. |
+| `DEAD_WALLET` | Dead-wallet transfer destination. Defaults to `1nc1nerator11111111111111111111111111111111`. |
 | `PUMPFUN_FEE_SHARING_MINT` | Optional Pump.fun fee-sharing mint passed to PumpDev. |
 | `BUYBACK_BPS` | Share of claimable SOL used for buyback after reserve. `9500` means 95%. |
 | `SOL_RESERVE_LAMPORTS` | SOL left in the wallet before calculating the buyback amount. |
@@ -99,8 +101,8 @@ Simulation-only settings:
 
 | Variable | Notes |
 | --- | --- |
-| `BURN_MINT` | Fake mint label used in simulation logs. |
-| `BURN_AMOUNT_RAW` | Fake token amount used in simulation logs. |
+| `BURN_MINT` | Fake mint label used in simulation logs. This name is legacy; no SPL burn instruction is run. |
+| `BURN_AMOUNT_RAW` | Fake token amount used in simulation logs. This represents the dead-wallet transfer amount. |
 | `BURN_SOL_LAMPORTS` | Fake SOL amount used in simulation logs. |
 
 ## API
@@ -115,19 +117,21 @@ Returns service mode, scheduler state, and basic health.
 GET /api/stats
 ```
 
-Returns aggregate burn stats and recent logs.
+Returns aggregate dead-wallet transfer stats and recent logs.
 
 ```http
 GET /api/logs
 ```
 
-Returns stored claim and burn events.
+Returns stored claim and dead-wallet transfer events.
 
 ```http
 POST /api/claim-and-burn
 ```
 
 Runs one manual claim cycle. In `simulate` mode this records a fake event. In `live` mode it signs and submits real transactions.
+
+Despite the route name, the live flow sends tokens to the configured dead wallet; it does not invoke an SPL token burn instruction.
 
 ## Data
 
