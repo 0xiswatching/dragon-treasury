@@ -22,6 +22,8 @@ On each claim cycle, the backend:
 
 The project exposes JSON endpoints that a dashboard, script, or monitoring tool can read.
 
+For a full build guide, architecture notes, API contracts, safety checklist, and implementation details, see [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md).
+
 ## Project Layout
 
 ```text
@@ -29,6 +31,7 @@ src/server.ts        Express API, scheduler, and claim loop
 src/pumpfunClaim.ts  PumpDev claim and buyback transaction flow
 src/solanaBurn.ts    Solana wallet, token account, and dead-wallet transfer helpers
 src/logStore.ts      Local JSON log store
+docs/                Implementation guide and operator notes
 ```
 
 ## Requirements
@@ -111,13 +114,13 @@ Simulation-only settings:
 GET /api/health
 ```
 
-Returns service mode, scheduler state, and basic health.
+Returns service mode, scheduler state, claim progress, and basic health.
 
 ```http
 GET /api/stats
 ```
 
-Returns aggregate dead-wallet transfer stats and recent logs.
+Returns aggregate dead-wallet transfer stats, recent logs, and scheduler timestamps.
 
 ```http
 GET /api/logs
@@ -130,11 +133,13 @@ Claim cycles are run only by the backend scheduler. There is no public API route
 ## Data
 
 Logs are stored at `data/logs.json`. The file is created automatically and is ignored by Git so local runtime history is not committed.
+Log updates are written through a temporary file and renamed into place to reduce the risk of a partially written JSON file.
 
 ## Safety Checklist Before Live Mode
 
 - Test the scheduler in `simulate` mode first, using `RUN_CLAIM_ON_START=true` if you want one startup cycle.
 - Use a dedicated wallet with only the funds needed for this service.
 - Confirm `DRGN_MINT`, `DEAD_WALLET`, and `SOLANA_RPC_URL`.
+- Confirm numeric settings are valid before startup. The service fails fast on invalid ports, intervals, basis points, decimals, slippage, fees, and reserve values.
 - Start with a conservative `BUYBACK_BPS`, reserve, and interval.
 - Watch the logs and transaction signatures during the first live cycle.

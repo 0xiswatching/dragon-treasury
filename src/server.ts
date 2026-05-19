@@ -2,30 +2,39 @@ import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import { loadConfig } from './config.js';
 import { appendLog, getStats, readLogs } from './logStore.js';
 import type { BurnLog, DragonMode } from './logStore.js';
 import { claimPumpfunFees } from './pumpfunClaim.js';
 import { getConnection, getKeypair, sendToDeadWallet } from './solanaBurn.js';
 
+const config = loadConfig();
 const app = express();
-const port = Number(process.env.PORT ?? 8795);
-const host = process.env.HOST ?? '0.0.0.0';
-const claimIntervalMinutes = Number(process.env.CLAIM_INTERVAL_MINUTES ?? 5);
-const claimIntervalMs = Math.max(1, claimIntervalMinutes) * 60_000;
-const autoClaimEnabled = process.env.AUTO_CLAIM_ENABLED !== 'false';
 let claimInProgress = false;
-let lastAutoClaimAt: string | null = null;
-let nextAutoClaimAt: string | null = autoClaimEnabled
-  ? new Date(Date.now() + claimIntervalMs).toISOString()
+let lastClaimAttemptAt: string | null = null;
+let lastSuccessfulClaimAt: string | null = null;
+let nextAutoClaimAt: string | null = config.autoClaimEnabled
+  ? new Date(Date.now() + config.claimIntervalMs).toISOString()
   : null;
 
 function getMode(): DragonMode {
-  return process.env.DRAGON_MODE === 'live' ? 'live' : 'simulate';
+  return config.mode;
+}
+
+function getSchedulerState() {
+  return {
+    autoClaimEnabled: config.autoClaimEnabled,
+    claimIntervalMinutes: config.claimIntervalMinutes,
+    claimInProgress,
+    lastClaimAttemptAt,
+    lastSuccessfulClaimAt,
+    nextAutoClaimAt
+  };
 }
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN?.split(',') ?? ['http://localhost:5180']
+    origin: config.frontendOrigins
   })
 );
 app.use(express.json());
@@ -34,10 +43,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     ok: true,
     mode: getMode(),
-    autoClaimEnabled,
-    claimIntervalMinutes,
-    lastAutoClaimAt,
-    nextAutoClaimAt
+    ...getSchedulerState()
   });
 });
 
@@ -53,10 +59,7 @@ app.get('/api/stats', async (_req: Request, res: Response, next: NextFunction) =
   try {
     res.json({
       ...(await getStats()),
-      autoClaimEnabled,
-      claimIntervalMinutes,
-      lastAutoClaimAt,
-      nextAutoClaimAt
+      ...getSchedulerState()
     });
   } catch (error) {
     next(error);
@@ -65,6 +68,7 @@ app.get('/api/stats', async (_req: Request, res: Response, next: NextFunction) =
 
 async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
   if (claimInProgress) {
+    lastClaimAttemptAt = new Date().toISOString();
     return appendLog({
       status: 'skipped',
       mode: getMode(),
@@ -75,6 +79,7 @@ async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
   }
 
   claimInProgress = true;
+  lastClaimAttemptAt = new Date().toISOString();
   try {
     const live = getMode() === 'live';
     const connection = live ? getConnection() : undefined;
@@ -89,12 +94,12 @@ async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
           lamports: claim.lamports
         };
 
-    return await appendLog({
+    const log = await appendLog({
       status: 'burned',
       mode: live ? 'live' : 'simulate',
       source: 'pump.fun fees',
       trigger: source,
-      destination: process.env.DEAD_WALLET ?? '1nc1nerator11111111111111111111111111111111',
+      destination: config.deadWallet,
       mint: claim.mint ?? burn.mint,
       amountRaw: claim.amountRaw ?? burn.amountRaw,
       lamports: claim.lamports ?? burn.lamports,
@@ -105,6 +110,8 @@ async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
       buySignature: claim.buySignature ?? null,
       burnSignature: burn.signature
     });
+    lastSuccessfulClaimAt = log.createdAt;
+    return log;
   } catch (error) {
     return await appendLog({
       status: 'failed',
@@ -115,7 +122,6 @@ async function claimAndBurn(source = 'auto'): Promise<BurnLog> {
     });
   } finally {
     claimInProgress = false;
-    lastAutoClaimAt = new Date().toISOString();
   }
 }
 
@@ -126,16 +132,24 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-app.listen(port, host, () => {
-  console.log(`Dragon backend listening on http://${host}:${port}`);
-  if (autoClaimEnabled) {
-    console.log(`Auto claim enabled every ${claimIntervalMinutes} minute(s).`);
-    if (process.env.RUN_CLAIM_ON_START === 'true') {
-      claimAndBurn('startup').catch((error) => console.error(error));
+app.listen(config.port, config.host, () => {
+  console.log(`Dragon backend listening on http://${config.host}:${config.port}`);
+  if (config.autoClaimEnabled) {
+    console.log(`Auto claim enabled every ${config.claimIntervalMinutes} minute(s).`);
+    if (config.runClaimOnStart) {
+      claimAndBurn('startup')
+        .then((log) => {
+          if (log.status === 'burned') lastSuccessfulClaimAt = log.createdAt;
+        })
+        .catch((error) => console.error(error));
     }
     setInterval(() => {
-      nextAutoClaimAt = new Date(Date.now() + claimIntervalMs).toISOString();
-      claimAndBurn('interval').catch((error) => console.error(error));
-    }, claimIntervalMs);
+      nextAutoClaimAt = new Date(Date.now() + config.claimIntervalMs).toISOString();
+      claimAndBurn('interval')
+        .then((log) => {
+          if (log.status === 'burned') lastSuccessfulClaimAt = log.createdAt;
+        })
+        .catch((error) => console.error(error));
+    }, config.claimIntervalMs);
   }
 });

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,7 @@ export type BurnStats = {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, '../data');
 const logPath = path.join(dataDir, 'logs.json');
+const tempLogPath = path.join(dataDir, 'logs.json.tmp');
 
 async function ensureStore() {
   await mkdir(dataDir, { recursive: true });
@@ -71,7 +72,8 @@ export async function appendLog(entry: NewBurnLog): Promise<BurnLog> {
     ...entry
   };
   logs.unshift(nextEntry);
-  await writeFile(logPath, `${JSON.stringify(logs.slice(0, 250), null, 2)}\n`, 'utf8');
+  await writeFile(tempLogPath, `${JSON.stringify(logs.slice(0, 250), null, 2)}\n`, 'utf8');
+  await rename(tempLogPath, logPath);
   return nextEntry;
 }
 

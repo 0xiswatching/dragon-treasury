@@ -5,8 +5,9 @@ import {
   getTokenProgramId,
   getWalletTokenAccount
 } from './solanaBurn.js';
+import { loadConfig } from './config.js';
 
-const PUMPDEV_API_URL = process.env.PUMPDEV_API_URL ?? 'https://pumpdev.io';
+const config = loadConfig();
 
 type PumpfunFlowInput = {
   connection?: Connection | null;
@@ -43,7 +44,7 @@ type BuyBackResult = {
 };
 
 async function postPumpDev(path: string, body: Record<string, unknown>): Promise<Uint8Array> {
-  const response = await fetch(`${PUMPDEV_API_URL}${path}`, {
+  const response = await fetch(`${config.pumpDevApiUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -73,7 +74,7 @@ async function claimCreatorFees({
 }: LivePumpfunFlowInput): Promise<ClaimCreatorFeesResult> {
   const body: Record<string, unknown> = {
     publicKey: keypair.publicKey.toBase58(),
-    priorityFee: Number(process.env.PUMPDEV_CLAIM_PRIORITY_FEE ?? 0.0001)
+    priorityFee: config.pumpDevClaimPriorityFee
   };
 
   if (process.env.PUMPFUN_FEE_SHARING_MINT) {
@@ -102,9 +103,9 @@ async function buyBackDrgn({
     throw new Error('DRGN_MINT is required for live buybacks.');
   }
 
-  const reserveLamports = Number(process.env.SOL_RESERVE_LAMPORTS ?? 20_000_000);
-  const buybackBps = Number(process.env.BUYBACK_BPS ?? 9500);
-  const lamportsToSpend = Math.floor(Math.max(0, lamportsClaimed - reserveLamports) * (buybackBps / 10_000));
+  const lamportsToSpend = Math.floor(
+    Math.max(0, lamportsClaimed - config.solReserveLamports) * (config.buybackBps / 10_000)
+  );
 
   if (lamportsToSpend <= 0) {
     return {
@@ -128,8 +129,8 @@ async function buyBackDrgn({
     mint,
     amount: lamportsToSpend / LAMPORTS_PER_SOL,
     denominatedInSol: 'true',
-    slippage: Number(process.env.BUYBACK_SLIPPAGE ?? 15),
-    priorityFee: Number(process.env.PUMPDEV_TRADE_PRIORITY_FEE ?? 0.0005)
+    slippage: config.buybackSlippage,
+    priorityFee: config.pumpDevTradePriorityFee
   });
   const signature = await signAndSendTransaction({ connection, keypair, bytes });
   await connection.confirmTransaction(signature, 'confirmed');
@@ -147,12 +148,12 @@ export async function claimPumpfunFees({
   connection,
   keypair
 }: PumpfunFlowInput = {}): Promise<PumpfunClaimResult> {
-  if (process.env.DRAGON_MODE !== 'live') {
+  if (config.mode !== 'live') {
     return {
       mode: 'simulate',
       mint: process.env.DRGN_MINT || process.env.BURN_MINT || 'DRGN',
       amountRaw: process.env.BURN_AMOUNT_RAW || String(777_000_000),
-      decimals: Number(process.env.DRGN_DECIMALS ?? 6),
+      decimals: config.drgnDecimals,
       lamportsClaimed: process.env.BURN_SOL_LAMPORTS || String(50_000_000),
       lamportsSpent: process.env.BURN_SOL_LAMPORTS || String(50_000_000),
       claimSignature: 'simulated-pumpdev-claim-account',
@@ -175,7 +176,7 @@ export async function claimPumpfunFees({
     mode: 'live',
     mint: buyback.mint,
     amountRaw: buyback.amountRaw,
-    decimals: Number(process.env.DRGN_DECIMALS ?? 6),
+    decimals: config.drgnDecimals,
     lamportsClaimed: String(claim.lamportsClaimed),
     lamportsSpent: buyback.lamportsSpent,
     claimSignature: claim.signature,
